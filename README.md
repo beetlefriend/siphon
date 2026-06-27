@@ -1,38 +1,29 @@
 # Siphon
 
-Bulk claim your [Pump.fun](https://pump.fun) creator fees.
+Bulk claim your [Pump.fun](https://pump.fun) creator fees in one click.
 
-Pump.fun accumulates creator fees per-coin in each bonding curve's vault. If you've created hundreds of coins, claiming them all manually is painful. Siphon finds every coin you're set as creator for and claims all uncollected fees in batched transactions.
+Manually claiming fees across hundreds of coins is tedious. Siphon scans your wallet, shows every unclaimed vault, and batches all the claims into a single approval.
 
-## Web App
+## Usage
 
-Connect your Solana wallet (Phantom, Solflare) and click claim. You can also paste any wallet address to check its unclaimed fees.
+1. Connect your Solana wallet (Phantom, Solflare)
+2. See all your unclaimed creator fees broken down by coin
+3. Click claim — sign once, all transactions fire automatically
 
-### Run locally
+You can also paste any wallet address to view its unclaimed fees.
+
+## Run locally
 
 ```bash
 cd web
 npm install
+cp .env.example .env   # add your RPC endpoint
 npm run dev
 ```
 
-### Deploy
+## Deploy
 
-Import the repo on [Vercel](https://vercel.com/new) with **Root Directory** set to `web`. Framework auto-detects as Vite.
-
-## How it works
-
-- **Per-coin vaults** — each coin has its own creator vault derived from its sharing-config PDA. Siphon queries all sharing-configs where you're the creator, checks each vault balance, and batches `distributeCreatorFeesV2` instructions (~5 per transaction).
-- **Permissionless** — anyone can trigger a fee distribution for any creator. The SOL goes to the creator's wallet regardless of who signs.
-- **No backend** — everything runs client-side against Solana RPCs. No keys leave your browser.
-
-## Tech
-
-- Vite + React frontend with `@solana/wallet-adapter`
-- `getProgramAccounts` on the Pump Fee program to discover all coins for a creator
-- `getMultipleAccountsInfo` to batch-check vault balances
-- Manual instruction building — no SDK dependency
-- Programs: Pump (`6EF8r...`), Pump Fee (`pfeeU...`), PumpSwap AMM (`pAMMB...`)
+Import the repo on [Vercel](https://vercel.com/new) with **Root Directory** set to `web`. Set `VITE_RPC_URL` in environment variables.
 
 ## License
 
