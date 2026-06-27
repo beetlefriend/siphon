@@ -85,11 +85,11 @@ export default function App() {
 
             <a
               className="coin-link"
-              href="https://pump.fun/coin/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              href="https://pump.fun/coin/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxpump"
               target="_blank"
               rel="noopener noreferrer"
             >
-              xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+              xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxpump
             </a>
 
             <footer>
