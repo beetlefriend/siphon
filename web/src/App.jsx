@@ -83,15 +83,16 @@ export default function App() {
               </main>
             </div>
 
+            <a
+              className="coin-link"
+              href="https://pump.fun/coin/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxpump"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              xxxxxx...xxxpump
+            </a>
+
             <footer>
-              <a
-                className="coin-link"
-                href="https://pump.fun/coin/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxpump"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                xxxxxx...xxxpump
-              </a>
               <div className="links">
                 <a
                   href="https://github.com/beetlefriend/siphon"
