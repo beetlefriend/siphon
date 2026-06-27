@@ -5,10 +5,6 @@ import {
   WalletProvider,
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import "./App.css";
 import ClaimPanel from "./ClaimPanel";
@@ -49,10 +45,7 @@ export default function App() {
     getRpcUrl().then(setRpcUrl);
   }, []);
 
-  const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
-    []
-  );
+  const wallets = useMemo(() => [], []);
 
   if (!rpcUrl) {
     return (
