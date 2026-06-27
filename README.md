@@ -1,8 +1,8 @@
 # Siphon
 
-Bulk claim your [Pump.fun](https://pump.fun) creator fees in one transaction.
+Bulk claim your [Pump.fun](https://pump.fun) creator fees.
 
-Pump.fun aggregates creator fees into two vaults per wallet — one for the bonding curve program, one for PumpSwap AMM. Siphon reads both vaults and claims everything in a single tx.
+Pump.fun accumulates creator fees per-coin in each bonding curve's vault. If you've created hundreds of coins, claiming them all manually is painful. Siphon finds every coin you're set as creator for and claims all uncollected fees in batched transactions.
 
 ## Web App
 
@@ -20,27 +20,19 @@ npm run dev
 
 Import the repo on [Vercel](https://vercel.com/new) with **Root Directory** set to `web`. Framework auto-detects as Vite.
 
-## CLI
-
-```bash
-npm install
-npx pf-claim check <WALLET_ADDRESS>
-npx pf-claim claim <PRIVATE_KEY_OR_KEYPAIR_FILE>
-npx pf-claim bulk <KEYS_FILE>
-```
-
 ## How it works
 
-- **Two vaults, one tx** — fees from all your coins pool into one vault per program (bonding curve + AMM). Claiming requires at most 2 instructions, not one per coin.
-- **Permissionless** — anyone can trigger a claim for any creator. The SOL goes to the creator's wallet regardless of who signs.
-- **No backend** — everything runs client-side against public Solana RPCs. No keys leave your browser.
+- **Per-coin vaults** — each coin has its own creator vault derived from its sharing-config PDA. Siphon queries all sharing-configs where you're the creator, checks each vault balance, and batches `distributeCreatorFeesV2` instructions (~5 per transaction).
+- **Permissionless** — anyone can trigger a fee distribution for any creator. The SOL goes to the creator's wallet regardless of who signs.
+- **No backend** — everything runs client-side against Solana RPCs. No keys leave your browser.
 
 ## Tech
 
 - Vite + React frontend with `@solana/wallet-adapter`
-- Manual instruction building (no SDK dependency)
-- RPC fallback chain: PublicNode > dRPC > Solana mainnet
-- PDA derivation for both `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` (Pump) and `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA` (PumpSwap)
+- `getProgramAccounts` on the Pump Fee program to discover all coins for a creator
+- `getMultipleAccountsInfo` to batch-check vault balances
+- Manual instruction building — no SDK dependency
+- Programs: Pump (`6EF8r...`), Pump Fee (`pfeeU...`), PumpSwap AMM (`pAMMB...`)
 
 ## License
 

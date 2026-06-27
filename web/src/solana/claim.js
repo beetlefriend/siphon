@@ -1,151 +1,90 @@
 import {
+  PublicKey,
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
   ComputeBudgetProgram,
-  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
   PUMP_PROGRAM,
-  PUMP_AMM_PROGRAM,
   WSOL_MINT,
   SPL_TOKEN_PROGRAM,
   ASSOCIATED_TOKEN_PROGRAM,
   SYSTEM_PROGRAM,
-  COLLECT_CREATOR_FEE_V2_DISC,
-  COLLECT_COIN_CREATOR_FEE_DISC,
+  DISTRIBUTE_CREATOR_FEES_V2_DISC,
 } from "./constants";
 import {
-  findCreatorVaultPump,
-  findCreatorVaultPumpAmm,
+  findBondingCurve,
+  findSharingConfig,
+  findCreatorVault,
   findEventAuthority,
   findAta,
 } from "./pda";
 
-function readTokenAmount(data) {
-  if (!data || data.length < 72) return 0;
-  const bytes = new Uint8Array(data);
-  let val = BigInt(0);
-  for (let i = 7; i >= 0; i--) {
-    val = (val << BigInt(8)) | BigInt(bytes[64 + i]);
-  }
-  return Number(val);
-}
-
-export async function getVaultBalances(connection, creator) {
-  const [pumpVault] = findCreatorVaultPump(creator);
-  const [ammVaultAuthority] = findCreatorVaultPumpAmm(creator);
-  const [ammVaultAta] = findAta(ammVaultAuthority, WSOL_MINT, SPL_TOKEN_PROGRAM);
-
-  console.log("[Siphon] Creator:", creator.toBase58());
-  console.log("[Siphon] Pump vault PDA:", pumpVault.toBase58());
-  console.log("[Siphon] AMM vault authority:", ammVaultAuthority.toBase58());
-  console.log("[Siphon] AMM vault ATA:", ammVaultAta.toBase58());
-
-  const [pumpAcct, ammAcct] = await Promise.all([
-    connection.getAccountInfo(pumpVault).catch((e) => { console.error("[Siphon] Pump vault fetch error:", e); return null; }),
-    connection.getAccountInfo(ammVaultAta).catch((e) => { console.error("[Siphon] AMM vault fetch error:", e); return null; }),
-  ]);
-
-  console.log("[Siphon] Pump vault exists:", !!pumpAcct, pumpAcct ? `lamports=${pumpAcct.lamports} dataLen=${pumpAcct.data.length}` : "");
-  console.log("[Siphon] AMM vault exists:", !!ammAcct, ammAcct ? `lamports=${ammAcct.lamports} dataLen=${ammAcct.data.length}` : "");
-
-  let pumpBalance = 0;
-  if (pumpAcct) {
-    const rentExempt = await connection.getMinimumBalanceForRentExemption(pumpAcct.data.length);
-    pumpBalance = Math.max(0, pumpAcct.lamports - rentExempt);
-    console.log("[Siphon] Pump vault: lamports=%d, rentExempt=%d, claimable=%d", pumpAcct.lamports, rentExempt, pumpBalance);
-  }
-
-  let ammBalance = 0;
-  if (ammAcct) {
-    ammBalance = readTokenAmount(ammAcct.data);
-    console.log("[Siphon] AMM vault token amount:", ammBalance);
-  }
-
-  const result = {
-    pumpBalanceLamports: pumpBalance,
-    ammBalanceLamports: ammBalance,
-    pumpBalanceSol: pumpBalance / LAMPORTS_PER_SOL,
-    ammBalanceSol: ammBalance / LAMPORTS_PER_SOL,
-    totalSol: (pumpBalance + ammBalance) / LAMPORTS_PER_SOL,
-    hasPumpFees: pumpBalance > 0,
-    hasAmmFees: ammBalance > 0,
-  };
-  console.log("[Siphon] Result:", result);
-  return result;
-}
-
-function makeCollectCreatorFeeV2Ix(creator) {
-  const [creatorVault] = findCreatorVaultPump(creator);
-  const [creatorTokenAccount] = findAta(creator, WSOL_MINT, SPL_TOKEN_PROGRAM);
-  const [creatorVaultTokenAccount] = findAta(creatorVault, WSOL_MINT, SPL_TOKEN_PROGRAM);
+function makeDistributeCreatorFeesV2Ix(payer, mintPubkey) {
+  const [bondingCurve] = findBondingCurve(mintPubkey);
+  const [sharingConfig] = findSharingConfig(mintPubkey);
+  const [creatorVault] = findCreatorVault(sharingConfig);
   const [eventAuthority] = findEventAuthority(PUMP_PROGRAM);
+  const [creatorVaultQuoteTokenAccount] = findAta(
+    creatorVault,
+    WSOL_MINT,
+    SPL_TOKEN_PROGRAM
+  );
+
+  const data = Buffer.alloc(9);
+  data.set(DISTRIBUTE_CREATOR_FEES_V2_DISC, 0);
+  data[8] = 1;
 
   return new TransactionInstruction({
     programId: PUMP_PROGRAM,
     keys: [
-      { pubkey: creator, isSigner: false, isWritable: true },
-      { pubkey: creatorTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: mintPubkey, isSigner: false, isWritable: false },
+      { pubkey: bondingCurve, isSigner: false, isWritable: false },
+      { pubkey: sharingConfig, isSigner: false, isWritable: false },
       { pubkey: creatorVault, isSigner: false, isWritable: true },
-      { pubkey: creatorVaultTokenAccount, isSigner: false, isWritable: true },
-      { pubkey: WSOL_MINT, isSigner: false, isWritable: false },
-      { pubkey: SPL_TOKEN_PROGRAM, isSigner: false, isWritable: false },
-      { pubkey: ASSOCIATED_TOKEN_PROGRAM, isSigner: false, isWritable: false },
       { pubkey: SYSTEM_PROGRAM, isSigner: false, isWritable: false },
       { pubkey: eventAuthority, isSigner: false, isWritable: false },
       { pubkey: PUMP_PROGRAM, isSigner: false, isWritable: false },
-    ],
-    data: Buffer.from(COLLECT_CREATOR_FEE_V2_DISC),
-  });
-}
-
-function makeCollectCoinCreatorFeeIx(coinCreator) {
-  const [creatorVaultAuthority] = findCreatorVaultPumpAmm(coinCreator);
-  const [creatorVaultAta] = findAta(creatorVaultAuthority, WSOL_MINT, SPL_TOKEN_PROGRAM);
-  const [coinCreatorTokenAccount] = findAta(coinCreator, WSOL_MINT, SPL_TOKEN_PROGRAM);
-  const [eventAuthority] = findEventAuthority(PUMP_AMM_PROGRAM);
-
-  return new TransactionInstruction({
-    programId: PUMP_AMM_PROGRAM,
-    keys: [
+      { pubkey: creatorVaultQuoteTokenAccount, isSigner: false, isWritable: true },
       { pubkey: WSOL_MINT, isSigner: false, isWritable: false },
       { pubkey: SPL_TOKEN_PROGRAM, isSigner: false, isWritable: false },
-      { pubkey: coinCreator, isSigner: false, isWritable: false },
-      { pubkey: creatorVaultAuthority, isSigner: false, isWritable: false },
-      { pubkey: creatorVaultAta, isSigner: false, isWritable: true },
-      { pubkey: coinCreatorTokenAccount, isSigner: false, isWritable: true },
-      { pubkey: eventAuthority, isSigner: false, isWritable: false },
-      { pubkey: PUMP_AMM_PROGRAM, isSigner: false, isWritable: false },
+      { pubkey: ASSOCIATED_TOKEN_PROGRAM, isSigner: false, isWritable: false },
     ],
-    data: Buffer.from(COLLECT_COIN_CREATOR_FEE_DISC),
+    data,
   });
 }
 
-export async function buildClaimTransaction(connection, creator, balances) {
-  const instructions = [
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 }),
-  ];
+const MAX_IX_PER_TX = 4;
 
-  if (balances.hasPumpFees) {
-    instructions.push(makeCollectCreatorFeeV2Ix(creator));
+export function buildClaimTransactions(payer, claimableMints, blockhash) {
+  const txs = [];
+
+  for (let i = 0; i < claimableMints.length; i += MAX_IX_PER_TX) {
+    const batch = claimableMints.slice(i, i + MAX_IX_PER_TX);
+    const instructions = [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 * batch.length }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 }),
+    ];
+
+    for (const mintStr of batch) {
+      instructions.push(
+        makeDistributeCreatorFeesV2Ix(payer, new PublicKey(mintStr))
+      );
+    }
+
+    const messageV0 = new TransactionMessage({
+      payerKey: payer,
+      recentBlockhash: blockhash,
+      instructions,
+    }).compileToV0Message();
+
+    txs.push({
+      transaction: new VersionedTransaction(messageV0),
+      mints: batch,
+    });
   }
-  if (balances.hasAmmFees) {
-    instructions.push(makeCollectCoinCreatorFeeIx(creator));
-  }
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-
-  const messageV0 = new TransactionMessage({
-    payerKey: creator,
-    recentBlockhash: blockhash,
-    instructions,
-  }).compileToV0Message();
-
-  return {
-    transaction: new VersionedTransaction(messageV0),
-    blockhash,
-    lastValidBlockHeight,
-  };
+  return txs;
 }

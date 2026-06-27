@@ -1,14 +1,29 @@
 import { PublicKey } from "@solana/web3.js";
 import {
   PUMP_PROGRAM,
+  PUMP_FEE_PROGRAM,
   PUMP_AMM_PROGRAM,
   ASSOCIATED_TOKEN_PROGRAM,
   SPL_TOKEN_PROGRAM,
 } from "./constants";
 
-export function findCreatorVaultPump(creator) {
+export function findBondingCurve(mint) {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("creator-vault"), creator.toBuffer()],
+    [Buffer.from("bonding-curve"), mint.toBuffer()],
+    PUMP_PROGRAM
+  );
+}
+
+export function findSharingConfig(mint) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("sharing-config"), mint.toBuffer()],
+    PUMP_FEE_PROGRAM
+  );
+}
+
+export function findCreatorVault(sharingConfig) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("creator-vault"), sharingConfig.toBuffer()],
     PUMP_PROGRAM
   );
 }

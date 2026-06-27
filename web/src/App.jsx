@@ -14,10 +14,10 @@ import "./App.css";
 import ClaimPanel from "./ClaimPanel";
 
 const RPC_ENDPOINTS = [
+  import.meta.env.VITE_RPC_URL,
   "https://solana-rpc.publicnode.com",
-  "https://solana.drpc.org",
   "https://api.mainnet-beta.solana.com",
-];
+].filter(Boolean);
 
 async function findWorkingRpc() {
   for (const url of RPC_ENDPOINTS) {
@@ -74,7 +74,7 @@ export default function App() {
               <header>
                 <h1>Siphon</h1>
                 <p className="subtitle">
-                  Bulk claim your Pump.fun creator fees in one tx
+                  Bulk claim your Pump.fun creator fees
                 </p>
               </header>
 

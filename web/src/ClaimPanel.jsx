@@ -2,26 +2,27 @@ import { useState, useCallback, useEffect } from "react";
 import { PublicKey } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { getVaultBalances, buildClaimTransaction } from "./solana/claim";
-import { getCreatedCoins } from "./solana/coins";
+import { discoverCoins } from "./solana/coins";
+import { buildClaimTransactions } from "./solana/claim";
 import "./ClaimPanel.css";
 
 const EXPLORER = "https://solscan.io/tx/";
 const PUMP_URL = "https://pump.fun/coin/";
+const SEND_BATCH = 10;
 
 export default function ClaimPanel() {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, connected } = useWallet();
+  const { publicKey, signAllTransactions, connected } = useWallet();
 
   const [lookupAddr, setLookupAddr] = useState("");
   const [activeKey, setActiveKey] = useState(null);
   const [isLookup, setIsLookup] = useState(false);
 
-  const [balances, setBalances] = useState(null);
-  const [coins, setCoins] = useState(undefined);
+  const [coins, setCoins] = useState(null);
   const [loading, setLoading] = useState(false);
   const [claiming, setClaiming] = useState(false);
-  const [txSig, setTxSig] = useState(null);
+  const [claimProgress, setClaimProgress] = useState(null);
+  const [txSigs, setTxSigs] = useState([]);
   const [error, setError] = useState(null);
 
   const fetchData = useCallback(
@@ -29,15 +30,16 @@ export default function ClaimPanel() {
       if (!key) return;
       setLoading(true);
       setError(null);
+      setCoins(null);
+
       try {
-        const bal = await getVaultBalances(connection, key);
-        setBalances(bal);
+        const results = await discoverCoins(connection, key);
+        setCoins(results);
       } catch (e) {
-        setError("Failed to fetch: " + e.message);
+        setError("Failed to scan: " + e.message);
       } finally {
         setLoading(false);
       }
-      getCreatedCoins(connection, key).then(setCoins).catch(() => setCoins(null));
     },
     [connection]
   );
@@ -45,16 +47,13 @@ export default function ClaimPanel() {
   useEffect(() => {
     if (connected && publicKey && !isLookup) {
       setActiveKey(publicKey);
-      setBalances(null);
-      setCoins(undefined);
-      setTxSig(null);
+      setTxSigs([]);
       setError(null);
       fetchData(publicKey);
     } else if (!connected && !isLookup) {
       setActiveKey(null);
-      setBalances(null);
-      setCoins(undefined);
-      setTxSig(null);
+      setCoins(null);
+      setTxSigs([]);
     }
   }, [connected, publicKey, fetchData, isLookup]);
 
@@ -63,9 +62,7 @@ export default function ClaimPanel() {
       const key = new PublicKey(lookupAddr.trim());
       setIsLookup(true);
       setActiveKey(key);
-      setBalances(null);
-      setCoins(undefined);
-      setTxSig(null);
+      setTxSigs([]);
       setError(null);
       fetchData(key);
     } catch {
@@ -77,40 +74,73 @@ export default function ClaimPanel() {
     setIsLookup(false);
     setLookupAddr("");
     setActiveKey(connected ? publicKey : null);
-    setBalances(null);
-    setCoins(undefined);
-    setTxSig(null);
+    setCoins(null);
+    setTxSigs([]);
     setError(null);
     if (connected && publicKey) fetchData(publicKey);
   };
 
   const handleClaim = async () => {
-    if (!publicKey || !balances) return;
+    if (!publicKey || !coins || !signAllTransactions) return;
     if (isLookup && activeKey?.toBase58() !== publicKey.toBase58()) {
       setError("Connect this wallet to claim");
       return;
     }
+
+    const claimable = coins.filter((c) => c.lamports > 0);
+    if (claimable.length === 0) return;
+
     setClaiming(true);
     setError(null);
-    setTxSig(null);
+    setTxSigs([]);
 
     try {
-      const { transaction, blockhash, lastValidBlockHeight } =
-        await buildClaimTransaction(connection, publicKey, balances);
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash("confirmed");
 
-      const sig = await sendTransaction(transaction, connection);
-      setTxSig(sig);
+      const txBundles = buildClaimTransactions(
+        publicKey,
+        claimable.map((c) => c.mint),
+        blockhash
+      );
 
-      try {
-        await connection.confirmTransaction(
-          { signature: sig, blockhash, lastValidBlockHeight },
-          "confirmed"
+      setClaimProgress(`Signing ${txBundles.length} transactions...`);
+
+      const unsigned = txBundles.map((b) => b.transaction);
+      const signed = await signAllTransactions(unsigned);
+
+      setClaimProgress(`Sending ${signed.length} transactions...`);
+      const sigs = [];
+      let sent = 0;
+
+      for (let i = 0; i < signed.length; i += SEND_BATCH) {
+        const batch = signed.slice(i, i + SEND_BATCH);
+        const batchSigs = await Promise.all(
+          batch.map((tx) =>
+            connection.sendRawTransaction(tx.serialize(), {
+              skipPreflight: true,
+              maxRetries: 3,
+            })
+          )
         );
-      } catch (confirmErr) {
-        console.warn("[Siphon] Confirmation polling timed out, tx likely landed:", confirmErr.message);
+        sigs.push(...batchSigs);
+        sent += batch.length;
+        setClaimProgress(`Sent ${sent}/${signed.length} transactions...`);
       }
 
-      await fetchData(publicKey);
+      setTxSigs(sigs);
+      setClaimProgress("Confirming...");
+
+      await Promise.allSettled(
+        sigs.map((sig) =>
+          connection.confirmTransaction(
+            { signature: sig, blockhash, lastValidBlockHeight },
+            "confirmed"
+          )
+        )
+      );
+
+      await fetchData(activeKey);
     } catch (e) {
       if (e.message?.includes("User rejected")) {
         setError("Transaction cancelled");
@@ -119,11 +149,15 @@ export default function ClaimPanel() {
       }
     } finally {
       setClaiming(false);
+      setClaimProgress(null);
     }
   };
 
-  const hasFees = balances && (balances.hasPumpFees || balances.hasAmmFees);
-  const canClaim = hasFees && connected && activeKey?.toBase58() === publicKey?.toBase58();
+  const totalSol = coins ? coins.reduce((sum, c) => sum + c.sol, 0) : 0;
+  const claimableCount = coins ? coins.filter((c) => c.lamports > 0).length : 0;
+  const txCount = Math.ceil(claimableCount / 4);
+  const canClaim =
+    claimableCount > 0 && connected && activeKey?.toBase58() === publicKey?.toBase58();
 
   return (
     <div className="claim-panel">
@@ -186,32 +220,16 @@ export default function ClaimPanel() {
               <span className="spinner" />
               <span>Checking vaults...</span>
             </div>
-          ) : balances ? (
+          ) : coins ? (
             <>
-              <div className="vault-grid">
-                <VaultRow
-                  label="Bonding Curve"
-                  amount={balances.pumpBalanceSol}
-                  active={balances.hasPumpFees}
-                />
-                <VaultRow
-                  label="PumpSwap AMM"
-                  amount={balances.ammBalanceSol}
-                  active={balances.hasAmmFees}
-                />
-                <div className="vault-total">
-                  <span>Total</span>
-                  <span className="total-amount">
-                    {balances.totalSol.toFixed(6)} SOL
-                  </span>
-                </div>
+              <div className="vault-total">
+                <span>Unclaimed ({claimableCount} of {coins.length} coins)</span>
+                <span className="total-amount">{totalSol.toFixed(6)} SOL</span>
               </div>
 
-              {coins && coins.length > 0 && (
+              {coins.length > 0 && (
                 <div className="coins-section">
-                  <div className="coins-header">
-                    Created coins ({coins.length})
-                  </div>
+                  <div className="coins-header">Coins ({coins.length})</div>
                   <div className="coins-list">
                     {coins.map((coin) => (
                       <a
@@ -222,45 +240,23 @@ export default function ClaimPanel() {
                         rel="noopener noreferrer"
                       >
                         <span className="coin-mint">
-                          {coin.mint.slice(0, 4)}..{coin.mint.slice(-4)}
+                          {coin.mint.slice(0, 6)}..{coin.mint.slice(-4)}
                         </span>
-                        {coin.complete && (
-                          <span className="coin-badge graduated">Graduated</span>
-                        )}
-                        {!coin.complete && (
-                          <span className="coin-badge active">Bonding</span>
+                        {coin.lamports > 0 ? (
+                          <span className="coin-badge graduated">
+                            {coin.sol.toFixed(4)} SOL
+                          </span>
+                        ) : (
+                          <span className="coin-badge empty">claimed</span>
                         )}
                       </a>
                     ))}
                   </div>
-                  <div className="coins-note">
-                    Fees from all coins pool into one vault per program
-                  </div>
                 </div>
               )}
 
-              {coins && coins.length === 0 && (
+              {coins.length === 0 && (
                 <div className="no-coins">No coins found for this wallet</div>
-              )}
-
-              {coins === null && (
-                <div className="coins-fallback">
-                  <span>Coin lookup unavailable on free RPC — </span>
-                  <a
-                    href={`https://pump.fun/profile/${activeKey.toBase58()}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View on pump.fun
-                  </a>
-                </div>
-              )}
-
-              {coins === undefined && !loading && (
-                <div className="status-row" style={{ padding: "8px" }}>
-                  <span className="spinner" />
-                  <span style={{ fontSize: "12px" }}>Loading coins...</span>
-                </div>
               )}
 
               {canClaim ? (
@@ -271,30 +267,31 @@ export default function ClaimPanel() {
                 >
                   {claiming ? (
                     <>
-                      <span className="spinner" /> Claiming...
+                      <span className="spinner" />
+                      {claimProgress || "Claiming..."}
                     </>
                   ) : (
-                    `Claim ${balances.totalSol.toFixed(4)} SOL`
+                    `Claim ${totalSol.toFixed(4)} SOL (${txCount} tx${txCount > 1 ? "s" : ""}, one approval)`
                   )}
                 </button>
-              ) : hasFees && isLookup ? (
-                <div className="connect-hint">
-                  Connect this wallet to claim
-                </div>
-              ) : !hasFees ? (
-                <div className="no-fees">No claimable fees</div>
+              ) : claimableCount > 0 && isLookup ? (
+                <div className="connect-hint">Connect this wallet to claim</div>
+              ) : coins.length > 0 && claimableCount === 0 ? (
+                <div className="no-fees">All fees claimed</div>
               ) : null}
 
-              {txSig && (
-                <div className="tx-result success">
-                  <span>Claimed!</span>
-                  <a
-                    href={EXPLORER + txSig}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View tx
-                  </a>
+              {txSigs.length > 0 && (
+                <div className="tx-results">
+                  <div className="tx-result success">
+                    <span>{txSigs.length} transactions confirmed</span>
+                    <a
+                      href={EXPLORER + txSigs[0]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View first tx
+                    </a>
+                  </div>
                 </div>
               )}
 
@@ -317,18 +314,6 @@ export default function ClaimPanel() {
           Connect your wallet or paste an address above to check fees
         </div>
       )}
-    </div>
-  );
-}
-
-function VaultRow({ label, amount, active }) {
-  return (
-    <div className={`vault-row ${active ? "active" : ""}`}>
-      <div className="vault-label">
-        <span className={`vault-dot ${active ? "on" : ""}`} />
-        {label}
-      </div>
-      <span className="vault-amount">{amount.toFixed(6)} SOL</span>
     </div>
   );
 }
