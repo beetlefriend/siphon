@@ -70,16 +70,18 @@ export default function App() {
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <div className="app">
-            <header>
-              <h1>Siphon</h1>
-              <p className="subtitle">
-                Bulk claim your Pump.fun creator fees in one tx
-              </p>
-            </header>
+            <div className="app-body">
+              <header>
+                <h1>Siphon</h1>
+                <p className="subtitle">
+                  Bulk claim your Pump.fun creator fees in one tx
+                </p>
+              </header>
 
-            <main>
-              <ClaimPanel />
-            </main>
+              <main>
+                <ClaimPanel />
+              </main>
+            </div>
 
             <footer>
               <div className="links">

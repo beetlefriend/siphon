@@ -7,7 +7,35 @@
 
 .connect-row {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.connected-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.connected-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-border);
+}
+
+.connected-addr {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.connected-addr:hover {
+  color: var(--accent);
 }
 
 .connect-row .wallet-adapter-button {
@@ -117,6 +145,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.wallet-label-link {
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.wallet-label-link:hover {
+  color: var(--accent);
 }
 
 .view-only-badge {

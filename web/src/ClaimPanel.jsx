@@ -129,6 +129,19 @@ export default function ClaimPanel() {
     <div className="claim-panel">
       <div className="connect-row">
         <WalletMultiButton />
+        {connected && publicKey && (
+          <div className="connected-info">
+            <span className="connected-dot" />
+            <a
+              className="connected-addr"
+              href={`https://pump.fun/profile/${publicKey.toBase58()}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {publicKey.toBase58().slice(0, 4)}..{publicKey.toBase58().slice(-4)}
+            </a>
+          </div>
+        )}
       </div>
 
       <div className="lookup-section">
@@ -155,7 +168,14 @@ export default function ClaimPanel() {
       {activeKey && (
         <div className="card">
           <div className="wallet-label">
-            {activeKey.toBase58().slice(0, 4)}..{activeKey.toBase58().slice(-4)}
+            <a
+              className="wallet-label-link"
+              href={`https://pump.fun/profile/${activeKey.toBase58()}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {activeKey.toBase58().slice(0, 4)}..{activeKey.toBase58().slice(-4)}
+            </a>
             {isLookup && !canClaim && (
               <span className="view-only-badge">View only</span>
             )}
