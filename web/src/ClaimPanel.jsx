@@ -1,49 +1,95 @@
 import { useState, useCallback, useEffect } from "react";
+import { PublicKey } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { getVaultBalances, buildClaimTransaction } from "./solana/claim";
+import { getCreatedCoins } from "./solana/coins";
 import "./ClaimPanel.css";
 
 const EXPLORER = "https://solscan.io/tx/";
+const PUMP_URL = "https://pump.fun/coin/";
 
 export default function ClaimPanel() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connected } = useWallet();
 
+  const [lookupAddr, setLookupAddr] = useState("");
+  const [activeKey, setActiveKey] = useState(null);
+  const [isLookup, setIsLookup] = useState(false);
+
   const [balances, setBalances] = useState(null);
+  const [coins, setCoins] = useState(undefined);
   const [loading, setLoading] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [txSig, setTxSig] = useState(null);
   const [error, setError] = useState(null);
 
-  const fetchBalances = useCallback(async () => {
-    if (!publicKey) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const bal = await getVaultBalances(connection, publicKey);
-      setBalances(bal);
-    } catch (e) {
-      setError("Failed to fetch balances: " + e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [connection, publicKey]);
+  const fetchData = useCallback(
+    async (key) => {
+      if (!key) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const bal = await getVaultBalances(connection, key);
+        setBalances(bal);
+      } catch (e) {
+        setError("Failed to fetch: " + e.message);
+      } finally {
+        setLoading(false);
+      }
+      getCreatedCoins(connection, key).then(setCoins).catch(() => setCoins(null));
+    },
+    [connection]
+  );
 
   useEffect(() => {
-    if (connected && publicKey) {
+    if (connected && publicKey && !isLookup) {
+      setActiveKey(publicKey);
       setBalances(null);
+      setCoins(undefined);
       setTxSig(null);
       setError(null);
-      fetchBalances();
-    } else {
+      fetchData(publicKey);
+    } else if (!connected && !isLookup) {
+      setActiveKey(null);
       setBalances(null);
+      setCoins(undefined);
       setTxSig(null);
     }
-  }, [connected, publicKey, fetchBalances]);
+  }, [connected, publicKey, fetchData, isLookup]);
+
+  const handleLookup = () => {
+    try {
+      const key = new PublicKey(lookupAddr.trim());
+      setIsLookup(true);
+      setActiveKey(key);
+      setBalances(null);
+      setCoins(undefined);
+      setTxSig(null);
+      setError(null);
+      fetchData(key);
+    } catch {
+      setError("Invalid wallet address");
+    }
+  };
+
+  const handleClearLookup = () => {
+    setIsLookup(false);
+    setLookupAddr("");
+    setActiveKey(connected ? publicKey : null);
+    setBalances(null);
+    setCoins(undefined);
+    setTxSig(null);
+    setError(null);
+    if (connected && publicKey) fetchData(publicKey);
+  };
 
   const handleClaim = async () => {
     if (!publicKey || !balances) return;
+    if (isLookup && activeKey?.toBase58() !== publicKey.toBase58()) {
+      setError("Connect this wallet to claim");
+      return;
+    }
     setClaiming(true);
     setError(null);
     setTxSig(null);
@@ -61,15 +107,13 @@ export default function ClaimPanel() {
           "confirmed"
         );
       } catch (confirmErr) {
-        console.warn("[Siphon] Confirmation polling failed, tx likely still landed:", confirmErr.message);
+        console.warn("[Siphon] Confirmation polling timed out, tx likely landed:", confirmErr.message);
       }
 
-      await fetchBalances();
+      await fetchData(publicKey);
     } catch (e) {
       if (e.message?.includes("User rejected")) {
         setError("Transaction cancelled");
-      } else if (txSig) {
-        console.warn("[Siphon] Post-send error (tx may have landed):", e.message);
       } else {
         setError("Claim failed: " + e.message);
       }
@@ -79,6 +123,7 @@ export default function ClaimPanel() {
   };
 
   const hasFees = balances && (balances.hasPumpFees || balances.hasAmmFees);
+  const canClaim = hasFees && connected && activeKey?.toBase58() === publicKey?.toBase58();
 
   return (
     <div className="claim-panel">
@@ -86,8 +131,36 @@ export default function ClaimPanel() {
         <WalletMultiButton />
       </div>
 
-      {connected && (
+      <div className="lookup-section">
+        <div className="lookup-row">
+          <input
+            type="text"
+            className="lookup-input"
+            placeholder="Paste any wallet address to check..."
+            value={lookupAddr}
+            onChange={(e) => setLookupAddr(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleLookup()}
+          />
+          <button className="lookup-btn" onClick={handleLookup}>
+            Check
+          </button>
+        </div>
+        {isLookup && (
+          <button className="clear-lookup" onClick={handleClearLookup}>
+            Back to my wallet
+          </button>
+        )}
+      </div>
+
+      {activeKey && (
         <div className="card">
+          <div className="wallet-label">
+            {activeKey.toBase58().slice(0, 4)}..{activeKey.toBase58().slice(-4)}
+            {isLookup && !canClaim && (
+              <span className="view-only-badge">View only</span>
+            )}
+          </div>
+
           {loading ? (
             <div className="status-row">
               <span className="spinner" />
@@ -114,7 +187,63 @@ export default function ClaimPanel() {
                 </div>
               </div>
 
-              {hasFees ? (
+              {coins && coins.length > 0 && (
+                <div className="coins-section">
+                  <div className="coins-header">
+                    Created coins ({coins.length})
+                  </div>
+                  <div className="coins-list">
+                    {coins.map((coin) => (
+                      <a
+                        key={coin.mint}
+                        className="coin-row"
+                        href={PUMP_URL + coin.mint}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <span className="coin-mint">
+                          {coin.mint.slice(0, 4)}..{coin.mint.slice(-4)}
+                        </span>
+                        {coin.complete && (
+                          <span className="coin-badge graduated">Graduated</span>
+                        )}
+                        {!coin.complete && (
+                          <span className="coin-badge active">Bonding</span>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                  <div className="coins-note">
+                    Fees from all coins pool into one vault per program
+                  </div>
+                </div>
+              )}
+
+              {coins && coins.length === 0 && (
+                <div className="no-coins">No coins found for this wallet</div>
+              )}
+
+              {coins === null && (
+                <div className="coins-fallback">
+                  <span>Coin lookup unavailable on free RPC — </span>
+                  <a
+                    href={`https://pump.fun/profile/${activeKey.toBase58()}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View on pump.fun
+                  </a>
+                </div>
+              )}
+
+              {coins === undefined && !loading && (
+                <div className="status-row" style={{ padding: "8px" }}>
+                  <span className="spinner" />
+                  <span style={{ fontSize: "12px" }}>Loading coins...</span>
+                </div>
+              )}
+
+              {canClaim ? (
                 <button
                   className="claim-btn"
                   onClick={handleClaim}
@@ -128,9 +257,13 @@ export default function ClaimPanel() {
                     `Claim ${balances.totalSol.toFixed(4)} SOL`
                   )}
                 </button>
-              ) : (
+              ) : hasFees && isLookup ? (
+                <div className="connect-hint">
+                  Connect this wallet to claim
+                </div>
+              ) : !hasFees ? (
                 <div className="no-fees">No claimable fees</div>
-              )}
+              ) : null}
 
               {txSig && (
                 <div className="tx-result success">
@@ -149,7 +282,7 @@ export default function ClaimPanel() {
 
               <button
                 className="refresh-btn"
-                onClick={fetchBalances}
+                onClick={() => fetchData(activeKey)}
                 disabled={loading}
               >
                 Refresh
@@ -159,8 +292,10 @@ export default function ClaimPanel() {
         </div>
       )}
 
-      {!connected && (
-        <div className="hint">Connect your wallet to check for claimable fees</div>
+      {!activeKey && (
+        <div className="hint">
+          Connect your wallet or paste an address above to check fees
+        </div>
       )}
     </div>
   );
