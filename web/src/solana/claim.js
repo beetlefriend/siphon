@@ -12,6 +12,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM,
   SYSTEM_PROGRAM,
   DISTRIBUTE_CREATOR_FEES_V2_DISC,
+  MEMO_PROGRAM,
 } from "./constants";
 import {
   findBondingCurve,
@@ -73,6 +74,14 @@ export function buildClaimTransactions(payer, claimableMints, blockhash) {
         makeDistributeCreatorFeesV2Ix(payer, new PublicKey(mintStr))
       );
     }
+
+    instructions.push(
+      new TransactionInstruction({
+        programId: MEMO_PROGRAM,
+        keys: [],
+        data: Buffer.from("siphon"),
+      })
+    );
 
     const messageV0 = new TransactionMessage({
       payerKey: payer,
