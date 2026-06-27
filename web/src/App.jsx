@@ -102,7 +102,7 @@ export default function App() {
                 </a>
               </div>
               <p className="disclaimer">
-                Open source. No fees taken. Transactions go directly on-chain.
+                Open source. Coin fees keep the project alive.
               </p>
             </footer>
           </div>
