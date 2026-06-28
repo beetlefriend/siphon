@@ -100,7 +100,7 @@ export default function ClaimPanel() {
 
       const txBundles = buildClaimTransactions(
         publicKey,
-        claimable.map((c) => c.mint),
+        claimable,
         blockhash
       );
 
@@ -223,34 +223,51 @@ export default function ClaimPanel() {
           ) : coins ? (
             <>
               <div className="vault-total">
-                <span>Unclaimed ({claimableCount} of {coins.length} coins)</span>
+                <span>Unclaimed ({claimableCount} vaults)</span>
                 <span className="total-amount">{totalSol.toFixed(6)} SOL</span>
               </div>
 
               {coins.length > 0 && (
                 <div className="coins-section">
-                  <div className="coins-header">Coins ({coins.length})</div>
+                  <div className="coins-header">Vaults ({coins.length})</div>
                   <div className="coins-list">
-                    {coins.map((coin) => (
-                      <a
-                        key={coin.mint}
-                        className="coin-row"
-                        href={PUMP_URL + coin.mint}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <span className="coin-mint">
-                          {coin.mint.slice(0, 6)}..{coin.mint.slice(-4)}
-                        </span>
-                        {coin.lamports > 0 ? (
-                          <span className="coin-badge graduated">
-                            {coin.sol.toFixed(4)} SOL
+                    {coins.map((coin, idx) =>
+                      coin.mint ? (
+                        <a
+                          key={coin.mint}
+                          className="coin-row"
+                          href={PUMP_URL + coin.mint}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <span className="coin-mint">
+                            {coin.mint.slice(0, 6)}..{coin.mint.slice(-4)}
                           </span>
-                        ) : (
-                          <span className="coin-badge empty">claimed</span>
-                        )}
-                      </a>
-                    ))}
+                          {coin.lamports > 0 ? (
+                            <span className="coin-badge graduated">
+                              {coin.sol.toFixed(4)} SOL
+                            </span>
+                          ) : (
+                            <span className="coin-badge empty">claimed</span>
+                          )}
+                        </a>
+                      ) : (
+                        <div key={coin.type + idx} className="coin-row vault-row">
+                          <span className="coin-mint">
+                            {coin.type === "direct"
+                              ? "Creator Vault"
+                              : "PumpSwap AMM Vault"}
+                          </span>
+                          {coin.lamports > 0 ? (
+                            <span className="coin-badge graduated">
+                              {coin.sol.toFixed(4)} SOL
+                            </span>
+                          ) : (
+                            <span className="coin-badge empty">claimed</span>
+                          )}
+                        </div>
+                      )
+                    )}
                   </div>
                 </div>
               )}

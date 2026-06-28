@@ -10,5 +10,7 @@ export const ASSOCIATED_TOKEN_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiq
 export const SYSTEM_PROGRAM = new PublicKey("11111111111111111111111111111111");
 
 export const DISTRIBUTE_CREATOR_FEES_V2_DISC = new Uint8Array([255, 203, 19, 79, 244, 68, 8, 159]);
+export const COLLECT_CREATOR_FEE_V2_DISC = new Uint8Array([207, 17, 138, 242, 4, 34, 19, 56]);
+export const COLLECT_COIN_CREATOR_FEE_DISC = new Uint8Array([160, 57, 89, 42, 181, 139, 43, 66]);
 
 export const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
