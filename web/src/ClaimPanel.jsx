@@ -81,11 +81,7 @@ export default function ClaimPanel() {
   };
 
   const handleClaim = async () => {
-    if (!publicKey || !coins || !signAllTransactions) return;
-    if (isLookup && activeKey?.toBase58() !== publicKey.toBase58()) {
-      setError("Connect this wallet to claim");
-      return;
-    }
+    if (!publicKey || !activeKey || !coins || !signAllTransactions) return;
 
     const claimable = coins.filter((c) => c.lamports > 0);
     if (claimable.length === 0) return;
@@ -100,6 +96,7 @@ export default function ClaimPanel() {
 
       const txBundles = buildClaimTransactions(
         publicKey,
+        activeKey,
         claimable,
         blockhash
       );
@@ -156,8 +153,7 @@ export default function ClaimPanel() {
   const totalSol = coins ? coins.reduce((sum, c) => sum + c.sol, 0) : 0;
   const claimableCount = coins ? coins.filter((c) => c.lamports > 0).length : 0;
   const txCount = Math.ceil(claimableCount / 4);
-  const canClaim =
-    claimableCount > 0 && connected && activeKey?.toBase58() === publicKey?.toBase58();
+  const canClaim = claimableCount > 0 && connected;
 
   return (
     <div className="claim-panel">
@@ -210,8 +206,8 @@ export default function ClaimPanel() {
             >
               {activeKey.toBase58().slice(0, 4)}..{activeKey.toBase58().slice(-4)}
             </a>
-            {isLookup && !canClaim && (
-              <span className="view-only-badge">View only</span>
+            {isLookup && (
+              <span className="view-only-badge">Lookup</span>
             )}
           </div>
 
@@ -287,12 +283,14 @@ export default function ClaimPanel() {
                       <span className="spinner" />
                       {claimProgress || "Claiming..."}
                     </>
+                  ) : isLookup ? (
+                    `Claim ${totalSol.toFixed(4)} SOL for ${activeKey.toBase58().slice(0, 4)}..${activeKey.toBase58().slice(-4)} (${txCount} tx${txCount > 1 ? "s" : ""})`
                   ) : (
                     `Claim ${totalSol.toFixed(4)} SOL (${txCount} tx${txCount > 1 ? "s" : ""}, one approval)`
                   )}
                 </button>
-              ) : claimableCount > 0 && isLookup ? (
-                <div className="connect-hint">Connect this wallet to claim</div>
+              ) : claimableCount > 0 && !connected ? (
+                <div className="connect-hint">Connect any wallet to claim</div>
               ) : coins.length > 0 && claimableCount === 0 ? (
                 <div className="no-fees">All fees claimed</div>
               ) : null}

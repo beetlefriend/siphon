@@ -112,7 +112,7 @@ function makeCollectCoinCreatorFeeIx(coinCreator) {
 
 const MAX_IX_PER_TX = 4;
 
-export function buildClaimTransactions(payer, claimableItems, blockhash) {
+export function buildClaimTransactions(payer, creator, claimableItems, blockhash) {
   const perCoinItems = claimableItems.filter((c) => c.type === "sharing-config");
   const directItems = claimableItems.filter((c) => c.type === "direct");
   const ammItems = claimableItems.filter((c) => c.type === "amm");
@@ -153,8 +153,8 @@ export function buildClaimTransactions(payer, claimableItems, blockhash) {
   }
 
   const extraIxs = [];
-  if (directItems.length > 0) extraIxs.push(makeCollectCreatorFeeV2Ix(payer));
-  if (ammItems.length > 0) extraIxs.push(makeCollectCoinCreatorFeeIx(payer));
+  if (directItems.length > 0) extraIxs.push(makeCollectCreatorFeeV2Ix(creator));
+  if (ammItems.length > 0) extraIxs.push(makeCollectCoinCreatorFeeIx(creator));
 
   if (extraIxs.length > 0) {
     const instructions = [
